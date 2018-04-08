@@ -1,0 +1,199 @@
+0) Las maquinas de computo tienen que tener unos 1.4GB de RAM o daran un fallo al arrancar
+
+ 
+1) Desactivar SELINUX!!! Important
+
+
+2) Relacion de comandos y comentarios en video:
+
+<-------------Video 1--------------------->
+
+#Disabling firewall
+
+systemctl stop firewalld
+systemctl disable firewalld
+systemctl status sshd
+
+# Adding the machine name and IP to the hosts file 
+
+echo "192.168.61.10 master master.localdomain">> /etc/hosts
+
+
+#Add OHPC repo
+
+yum install http://build.openhpc.community/OpenHPC:/1.3/CentOS_7/x86_64/ohpc-release-1.3-1.el7.x86_64.rpm
+
+#Update repos
+
+yum update
+
+#Install OHPC base and Warewulf provisioning tool
+
+yum -y groupinstall ohpc-base
+yum -y groupinstall ohpc-warewulf
+
+
+#Install Resource Manager: SLURM
+
+yum -y install ohpc-slurm-server
+
+#Change settings in SLURM file:
+
+vim /etc/slurm/slurm.conf change: ControlMachine=linux0->master
+                                  ClusterName=linux->localdomain  
+; and set the correct number of nodes cores and threads.
+
+
+#Configure provisioning in Master node. Set  interface:
+
+vim /etc/warewulf/provision.conf : Change eth1 -> enp0s8
+
+#Configure provisioning in Master node. Activate tftp:
+
+vim /etc/xinetd.d/tftp : Change disabled: yes -> disabled: no
+
+systemctl restart xinetd
+systemctl enable mariadb.service
+systemctl restart mariadb
+systemctl enable httpd.service
+systemctl restart httpd
+
+#Generate database for Warewulf and ssh keys
+
+wwinit database
+wwinit ssh_keys
+
+(Hint: Remove .ssh/config all IdentityFiles but cluster)
+
+
+#Create exports to the nodes
+
+echo "/home 192.168.61.1/24(rw,no_subtree_check,fsid=10,no_root_squash)" >> /etc/exports
+echo "/opt/ohpc/pub 192.168.61.1/24(ro,no_subtree_check,fsid=11)" >> /etc/exports
+systemctl restart nfs
+systemctl enable nfs-server
+exportfs
+
+
+<------------------ Video 2------------------------->
+
+
+#Define compute image for provisioning
+
+mkdir -p /opt/ohpc/admin/images/centos7.4
+export CHROOT=/opt/ohpc/admin/images/centos7.4
+
+#Build initial BaseOS image: minimal centos7.4
+
+wwmkchroot centos-7 $CHROOT
+
+#That was minimal centos. Adding OHPC components to the image:
+
+yum -y --installroot=$CHROOT groupinstall ohpc-base-compute
+yum -y --installroot=$CHROOT install ohpc-slurm-client
+yum -y --installroot=$CHROOT install kernel
+yum -y --installroot=$CHROOT install lmod-ohpc
+
+#Copy ssh keys to compute image
+
+ cat ~/.ssh/cluster.pub >> $CHROOT/root/.ssh/authorized_keys
+ 
+#Create mountpoints for home and ohpc
+
+echo "192.168.61.10:/home /home nfs nfsvers=3,rsize=1024,wsize=1024,cto 0 0" >> $CHROOT/etc/fstab
+echo "192.168.61.10:/opt/ohpc/pub /opt/ohpc/pub nfs nfsvers=3 0 0" >> $CHROOT/etc/fstab
+
+#Import files to be used in provision. They are kept sync by warewulf:
+
+wwsh file import /etc/passwd
+wwsh file import /etc/group
+wwsh file import /etc/shadow
+wwsh file import /etc/slurm/slurm.conf
+wwsh file import /etc/munge/munge.key
+
+#Finalizing provisioning configuration
+
+## Assemble boostrap image:
+
+ wwbootstrap `uname -r`
+ 
+## Assemble VNFS image
+
+wwvnfs --chroot $CHROOT
+
+
+
+
+#Add nodes to datastore: Macs are c1: 08:00:27:1B:D6:42 , c2: 08:00:27:56:A5:4F
+
+wwsh -y node new c1 --ipaddr=192.168.61.21 --hwaddr=08:00:27:05:DF:A3
+wwsh -y node new c2 --ipaddr=192.168.61.22 --hwaddr=08:00:27:9C:97:B7
+
+wwsh node list
+NAME                GROUPS              IPADDR              HWADDR             
+================================================================================
+c1                  UNDEF               192.168.61.21       08:00:27:1b:d6:42  
+c2                  UNDEF               192.168.61.22       08:00:27:56:a5:4f 
+
+# Set prvision image for hosts
+
+wwsh -y provision set c[1-2] --vnfs=centos7.4 --bootstrap=`uname -r` --files=dynamic_hosts,passwd,group,shadow,slurm.conf,munge.key
+
+wwsh provision list
+NODE                VNFS            BOOTSTRAP             FILES                
+================================================================================
+c1                  centos7.4       3.10.0-514.21.1.el... dynamic_hosts,grou...
+c2                  centos7.4       3.10.0-514.21.1.el... dynamic_hosts,grou...
+
+ systemctl enable dhcpd
+ systemctl restart dhcpd
+ wwsh pxe update
+
+<---------------------------Video 3-----------------------------------> 
+ 
+#Boot nodes
+
+pdsh -w c[1-2] 'uptime'
+
+
+#Resource manager Start UP
+
+systemctl start munge
+systemctl start slurmctld
+systemctl enable munge
+systemctl enable slurmctld
+
+pdsh -w c[1-2] systemctl start slurmd
+pdsh -w c[1-2] systemctl enable slurmd !!optional
+sinfo
+
+(Hint: munge problems. Sometimes nodes can not athenticate using munge. It says it is an invalid key. Just manually copy the key from the master to the nodes)
+
+
+#Install Devel Components...
+
+yum -y groupinstall ohpc-autotools
+yum -y install valgrind-ohpc
+yum -y install EasyBuild-ohpc
+yum -y install spack-ohpc
+yum -y install R_base-ohpc
+yum -y install gnu-compilers-ohpc (marcado como instalado)
+yum -y install openmpi-gnu-ohpc 
+yum -y install  lmod-defaults-gnu-openmpi-ohpc
+
+
+#Run
+
+useradd -m test
+wwsh file resync passwd shadow group
+pdsh -w c[1-2] /warewulf/bin/wwgetfiles
+su - test
+module avail
+module list
+mpicc -O3 /opt/ohpc/pub/examples/mpi/hello.c
+ls
+srun -n 2 -N 2 --pty /bin/bash
+prun ./a.out
+
+
+
