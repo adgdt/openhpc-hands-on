@@ -1,3 +1,6 @@
+-1 )Es importante si se usa virtualbox como infraestructura para los nodos y master, instalar el extension
+pack para que funcione el arranque PXE
+
 0) Las maquinas de computo tienen que tener unos 1.4GB de RAM o daran un fallo al arrancar
 
  
