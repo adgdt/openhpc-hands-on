@@ -1,15 +1,13 @@
--1 )Es importante si se usa virtualbox como infraestructura para los nodos y master, instalar el extension
-pack para que funcione el arranque PXE
+-1) When using this speed-run with infrastructure made of VirtualBox VMs it is important to
+have VBox Extension Pack installed. Otherwise PXE boot with fail with intel devices, and maybe
+with others too.
 
-0) Las maquinas de computo tienen que tener unos 1.4GB de RAM o daran un fallo al arrancar
-
+0) Compute nodes either virtual or physical must have over 1.4GB of RAM or they will fail on boot
  
-1) Desactivar SELINUX!!! Important
+1) Disable SELINUX!!! Important
 
 
-2) Relacion de comandos y comentarios en video:
-
-<-------------Video 1--------------------->
+<-------------Part 1. Mainly Master Configuration --------------------->
 
 #Disabling firewall
 
@@ -53,7 +51,7 @@ vim /etc/warewulf/provision.conf : Change eth1 -> enp0s8
 
 #Configure provisioning in Master node. Activate tftp:
 
-vim /etc/xinetd.d/tftp : Change disabled: yes -> disabled: no
+vim /etc/xinetd.d/tftp : Change disable: yes -> disable: no
 
 systemctl restart xinetd
 systemctl enable mariadb.service
@@ -66,7 +64,7 @@ systemctl restart httpd
 wwinit database
 wwinit ssh_keys
 
-(Hint: Remove .ssh/config all IdentityFiles but cluster)
+(Hint: Remove .ssh/config all IdentityFiles but cluster or pdsh may complain after)
 
 
 #Create exports to the nodes
@@ -78,7 +76,7 @@ systemctl enable nfs-server
 exportfs
 
 
-<------------------ Video 2------------------------->
+<------------------ Part 2. Mainly Compute Node Image Building and Provisioning------------------------->
 
 
 #Define compute image for provisioning
@@ -152,7 +150,7 @@ c2                  centos7.4       3.10.0-514.21.1.el... dynamic_hosts,grou...
  systemctl restart dhcpd
  wwsh pxe update
 
-<---------------------------Video 3-----------------------------------> 
+<---------------------------Part 3. Slurm interaction and testing-----------------------------------> 
  
 #Boot nodes
 
@@ -166,8 +164,7 @@ systemctl start slurmctld
 systemctl enable munge
 systemctl enable slurmctld
 
-pdsh -w c[1-2] systemctl start slurmd
-pdsh -w c[1-2] systemctl enable slurmd !!optional
+pdsh -w c[1-2] systemctl start slurmd  ### Note: slurmd is inactive in the vnfs image, so it must be make active every reboot
 sinfo
 
 (Hint: munge problems. Sometimes nodes can not athenticate using munge. It says it is an invalid key. Just manually copy the key from the master to the nodes)
