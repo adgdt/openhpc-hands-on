@@ -64,7 +64,7 @@ systemctl restart httpd
 wwinit database
 wwinit ssh_keys
 
-(Hint: Remove .ssh/config all IdentityFiles but cluster or pdsh may complain after)
+(Hint: Remove .ssh/config all IdentityFiles butspeed-run.txt cluster, or pdsh may complain after)
 
 
 #Create exports to the nodes
