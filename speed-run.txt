@@ -106,6 +106,9 @@ echo "192.168.61.10:/opt/ohpc/pub /opt/ohpc/pub nfs nfsvers=3 0 0" >> $CHROOT/et
 
 #Import files to be used in provision. They are kept sync by warewulf:
 
+you have to install ipxe-warewulf
+yum install warewulf-provision-server-ipxe-aarch64-ohpc.noarch
+
 wwsh file import /etc/passwd
 wwsh file import /etc/group
 wwsh file import /etc/shadow
